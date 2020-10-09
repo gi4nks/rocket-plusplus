@@ -26,6 +26,7 @@
     "clark": "0.0.6",
     "hubot": "3",
     "hubot-rocketchat": "github:rocketchat/hubot-rocketchat",
+    "mongoose": "^5.10.8",
     "underscore": ">= 1.0"
   },
   "devDependencies": {
