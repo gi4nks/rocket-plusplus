@@ -42,9 +42,8 @@ hubot erase <name> [<reason>] - Remove the score for a name (for a reason)
 OR
 
 ```
-mybotuser rc version
+<mybotuser> rc version
 ```
-`< TBD:  insert sample run screenshot >`
 
 ### Running Locally
 
