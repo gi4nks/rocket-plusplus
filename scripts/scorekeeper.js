@@ -1,169 +1,171 @@
+
 const mongoose = require('mongoose');
 
-const UserDetailsSchema = new mongoose.Schema({
-  fromUser: String,
-  addValue: Number,
-  room: String,
-  reason: String
-});
+const m = require('./models/models');
 
-const UserSchema = new mongoose.Schema({
-  username: String,
-  kudos: Number,
-  details: [UserDetailsSchema]
-});
+var ScoreKeeper = function (robot) {
 
-const UserLogSchema = new mongoose.Schema({
-  fromUser: String,
-  toUser: String,
-  room: String,
-  dateSubmitted: Date
-}); 
+  this.getUser = (uname, callback) => {
+    robot.logger.info("getting user: " + uname);
 
-const UserModel = mongoose.model('UserModel', UserSchema);
-const UserLogModel = mongoose.model('UserLogModel', UserLogSchema);
-const UserDetailsModel = mongoose.model('UserDetailsModel', UserDetailsSchema);
+    const model = m.models.UserModel.findOne({ 'username': uname });
 
-var ScoreKeeper = function(robot) {
+    model.exec(function (err, u) {
+      var uRet;
+      if (err) {
+        robot.logger.info("UserModel.findOne: " + uname + " error: " + err);
 
-  mongoose.connect(process.env.PLUSPLUS_DATABASE_HOST, {useNewUrlParser: true});
-
-  this.getUser = async (user) => {
-    robot.logger.info("getting user: " + user);
-
-    const model = UserModel.findOne({username: user}, function (err, u) { 
-      if (err){ 
-        robot.logger.warn("getting user: " + user + " error: " + err);
-
-        return new UserModel({username: user, kudos: 0, details: {}});
-      } 
-      else { 
-        robot.logger.info("getting user: " + user + " found: " + u);
-
-        return u;
+        uRet = new m.models.UserModel({ 'username': uname, 'kudos': 0, 'details': [] });
       }
-    });
-
-    return model;
-  }
-
-  this.validate = (user, from) => {
-    return (user !== from) && (user !== "") && !this.isSpam(user, from);
-  }
-
-  this.isSpam = (user, from) => {
-    const model = UserLogModel.findOne({userFrom: from}, function (err, ul) {
-      if (err){ 
-        robot.logger.warn("isSpam user: " + from + " error: " + err);
-
-        return new UserLogModel({fromUser: user, toUser: from});
-      } 
-      else { 
-        robot.logger.info("getting userlog: " + user + " found: " + u);
-
-        return u;
-      }
-    });
-
-    if (!model.dateSubmitted)  {
-      return false;
-    }
-
-    const ds = model.dateSubmitted;
-
-    const date = new Date(ds);
-    const messageIsSpam = date.setSeconds(date.getSeconds() + 5) > new Date();
-
-    if (!messageIsSpam) {
-      var ret = UserLogModel.deleteOne({userFrom: from}, function (err, ul) {
-        if (err){ 
-          robot.logger.warn("isSpam user: " + user + " error: " + err);
-  
-          return false;
-        } 
-        else { 
-          robot.logger.info("getting userlog: " + user + " found: " + u);
-  
-          return false;
+      else {
+        if (!u) {
+          u = new m.models.UserModel({ 'username': uname, 'kudos': 0, 'details': [] });
         }
+        robot.logger.info("UserModel.findOne: " + uname + " found: " + u);
+
+        uRet = u;
+      }
+
+      callback(uRet);
+    });
+  }
+
+  this.validate = (to, from) => {
+    return (to !== from) && (to !== "") && !this.isSpam(to, from);
+  }
+
+  this.isSpam = (to, from) => {
+    const query = m.models.UserLogModel.findOne({ 'fromUser': from, 'toUser': to });
+    query.exec(function(error, result) {
+      // handle error
+      
+      if (!result) {
+        robot.logger.info('no element in log file founs, is not spam');
+        return false;
+      }
+
+      const ds = result.dateSubmitted;
+
+      const date = new Date(ds);
+      const messageIsSpam = date.setSeconds(date.getSeconds() + 5) > new Date();
+
+      if (!messageIsSpam) {
+
+        robot.logger.info('this is not a spam');
+            
+        const query2 = m.models.UserLogModel.deleteMany({ 'fromUser': from, 'toUser': to });
+        
+        query2.exec(function (err, u) {
+          if (err) {
+            robot.logger.info("isSpam user: " + from + " error: " + err);
+          }
+          else {
+            robot.logger.info("UserLogModel.deleteMany: " + from + " found: " + u);
+          }
+        });
+      } 
+
+      return messageIsSpam;
+    });
+  }
+
+  this.saveUser = (userModel, userDetailsModel, callback) => {
+    this.saveScoreLog(userModel, userDetailsModel, () => {
+      userModel.save(function (err, result) {
+        if (err) {
+          robot.logger.info("Error on saving the user: " + err);
+        }
+        else {
+          robot.logger.info("User saved: " + result)
+        }
+        
+        callback(userModel.kudos, userDetailsModel.reason);
       });
-
-      // don't do nothing
-    }
-
-    return messageIsSpam;
+    });
   }
 
-  this.saveUser = (userModel, userDetailsModel) => {
-    this.saveScoreLog(userModel, userDetailsModel);
-  
-    userModel.save(function(err, result){ 
-      if (err){ 
-        robot.logger.warn("Error on saving the user: " + err); 
-      } 
-      else{ 
-        robot.logger.info("User saved: " + result) 
-      } 
-    })
+  this.saveScoreLog = (userModel, userDetailsModel, callback) => {
 
-    return [userModel.kudos, userDetailsModel.reason];
-  }
-
-  this.saveScoreLog = (userModel, userDetailsModel) => {
-
-    const userLogModel = new UserLogModel({
+    const userLogModel = new m.models.UserLogModel({
       fromUser: userDetailsModel.fromUser,
       toUser: userModel.username,
       room: userDetailsModel.room,
       dateSubmitted: new Date()
     });
 
-    userLogModel.save(function(err, result) {
-      if (err){ 
-        robot.logger.warn("Error on saving the userlog: " + err); 
-      } 
-      else{ 
-        robot.logger.info("Userlog saved: " + result) 
-      } 
-    })
+    userLogModel.save(function (err, result) {
+      if (err) {
+        robot.logger.warn("Error on saving the userlog: " + err);
+      }
+      else {
+        robot.logger.info("Userlog saved: " + result)
+      }
 
-    return;
-    //return this.storage.last[room] = {user, reason};
+      callback();
+    })
   }
 
-  this.add = (user, from, rm, rsn) => {
-    robot.logger.info("writing a score to user: " + user + " - " + from + " - " + rm);
+  this.add = (to, from, rm, rsn) => {
+    robot.logger.info("writing a score to user: " + to + " - " + from + " - " + rm);
 
-    if (this.validate(user, from)) {
-      user = this.getUser(user).then(user => {
-        robot.logger.info("user found :" + user.username + " - " + user.kudos + " - " + user.details);
+    if (this.validate(to, from)) {
+      this.getUser(to, (u) => {
+        robot.logger.info("user found :" + u.username + " - " + u.kudos + " - " + u.details);
 
-        user.kudos++;
-        
-        var detailsModel = new UserDetailsModel({fromUser: from, addValue: 1, reason: rsn, room: rm});
-        user.details.push(detailsModel);
-  
+        u.kudos++;
 
-        return this.saveUser(user, detailsModel);  
+        var detailsModel = new m.models.UserDetailsModel({ fromUser: from, addValue: 1, reason: rsn, room: rm });
+        u.details.push(detailsModel);
 
+
+        this.saveUser(u, detailsModel, (k, r) => {
+          return [k, r];
+        });
       });
-
-      /*
-      robot.logger.info("user found :" + user.username + " - " + user.kudos + " - " + user.details);
-
-      user.kudos++;
-      
-      var detailsModel = new UserDetailsModel({fromUser: from, addValue: 1, reason: rsn, room: rm});
-      user.details.push(detailsModel);
-
-      return this.saveUser(user, detailsModel);
-      */
     } else {
       return [null, null];
     }
   }
 
+  this.subtract = (to, from, rm, rsn) => {
+    robot.logger.info("writing a score to user: " + to + " - " + from + " - " + rm);
 
+    if (this.validate(to, from)) {
+      this.getUser(to, (u) => {
+        robot.logger.info("user found :" + u.username + " - " + u.kudos + " - " + u.details);
+
+        u.kudos--;
+
+        var detailsModel = new m.models.UserDetailsModel({ fromUser: from, addValue: -1, reason: rsn, room: rm });
+        u.details.push(detailsModel);
+
+
+        this.saveUser(u, detailsModel, (k, r) => {
+          return [k, r];
+        });
+      });
+    } else {
+      return [null, null];
+    }
+  }
+
+  this.scoreForUser = (user, callback) => {
+    this.getUser(user, callback);
+  }
+
+  this.erase = (user, from, room, reason) => {
+    this.getUser(user, (u) => {
+      if (reason) {
+        delete this.storage.reasons[user][reason];
+        this.saveUser(user, from.name, room);
+        return true;
+      } else {
+        delete this.storage.scores[user];
+        delete this.storage.reasons[user];
+        return true;
+      }  
+    });
+  }
 
   /*
   const storageLoaded = () => {
@@ -331,7 +333,7 @@ var ScoreKeeper = function(robot) {
     this.storage.scores = scores;
     return robot.brain.save();
   }
-  */  
+  */
 }
 
 module.exports = ScoreKeeper;
