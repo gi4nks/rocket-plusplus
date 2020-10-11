@@ -34,15 +34,19 @@
 const _ = require('underscore');
 const clark = require('clark');
 const querystring = require('querystring');
+
+const m = require('./models/models');
+
 const ScoreKeeper = require('./scorekeeper.js');
 
-module.exports = function(robot) {
+module.exports = function (robot) {
   const scoreKeeper = new ScoreKeeper(robot);
-  const scoreKeyword   = process.env.HUBOT_PLUSPLUS_KEYWORD || 'score';
+  const scoreKeyword = process.env.HUBOT_PLUSPLUS_KEYWORD || 'score';
   const reasonsKeyword = process.env.HUBOT_PLUSPLUS_REASONS || 'raisins';
   const reasonConjunctions = process.env.HUBOT_PLUSPLUS_CONJUNCTIONS || 'for|because|cause|cuz|as';
 
   // sweet regex bro
+  /*
   robot.hear(new RegExp(`\
 \
 ^\
@@ -56,66 +60,78 @@ module.exports = function(robot) {
 (?:\\s+(?:${reasonConjunctions})\\s+(.+))?\
 $\
 `, 'i'), function(msg) {
+*/
 
-    // let's get our local vars in place
-    let [dummy, name, operator, reason] = Array.from(msg.match);
-    const from = msg.message.user.name.toLowerCase();
-    const {
-      room
-    } = msg.message;
+  robot.hear(RegExp("^([\\s\\w'@.\\-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\\s*(\\+\\+|--|—)(?:\\s+(?:" + reasonConjunctions + ")\\s+(.+))?$", "i"), function (msg) {
+    m.connectDb().then(async () => {
 
-    // do some sanitizing
-    reason = reason != null ? reason.trim().toLowerCase() : undefined;
+      // let's get our local vars in place
+      let [dummy, name, operator, reason] = Array.from(msg.match);
 
-    if (name) {
-      if (name.charAt(0) === ':') {
-        name = (name.replace(/(^\s*@)|([,\s]*$)/g, '')).trim().toLowerCase();
-      } else {
-        name = (name.replace(/(^\s*@)|([,:\s]*$)/g, '')).trim().toLowerCase();
+      robot.logger.info("match: " + msg);
+      robot.logger.info("name: " + name);
+      robot.logger.info("operator: " + operator);
+
+      robot.logger.info("reason: " + reason);
+
+      const from = msg.message.user.name.toLowerCase();
+      const {
+        room
+      } = msg.message;
+
+      // do some sanitizing
+      reason = reason != null ? reason.trim().toLowerCase() : undefined;
+
+      if (name) {
+        if (name.charAt(0) === ':') {
+          name = (name.replace(/(^\s*@)|([,\s]*$)/g, '')).trim().toLowerCase();
+        } else {
+          name = (name.replace(/(^\s*@)|([,:\s]*$)/g, '')).trim().toLowerCase();
+        }
       }
-    }
 
-    // check whether a name was specified. use MRU if not
-    if ((name == null) || (name === '')) {
-      let lastReason;
-      [name, lastReason] = Array.from(scoreKeeper.last(room));
-      if ((reason == null) && (lastReason != null)) { reason = lastReason; }
-    }
+      // check whether a name was specified. use MRU if not
+      if ((name == null) || (name === '')) {
+        let lastReason;
+        [name, lastReason] = Array.from(scoreKeeper.last(room));
+        if ((reason == null) && (lastReason != null)) { reason = lastReason; }
+      }
 
-    // do the {up, down}vote, and figure out what the new score is
-    const [score, reasonScore] = Array.from(operator === "++" ?
-              scoreKeeper.add(name, from, room, reason)
+      // do the {up, down}vote, and figure out what the new score is
+      const [score, reasonScore] = Array.from(operator === "++" ?
+        scoreKeeper.add(name, from, room, reason)
+        :
+        scoreKeeper.subtract(name, from, room, reason));
+
+      // if we got a score, then display all the things and fire off events!
+      if (score != null) {
+        const message = (reason != null) ?
+          (reasonScore === 1) || (reasonScore === -1) ?
+            (score === 1) || (score === -1) ?
+              `${name} has ${score} point for ${reason}.`
+              :
+              `${name} has ${score} points, ${reasonScore} of which is for ${reason}.`
             :
-              scoreKeeper.subtract(name, from, room, reason));
-
-    // if we got a score, then display all the things and fire off events!
-    if (score != null) {
-      const message = (reason != null) ?
-                  (reasonScore === 1) || (reasonScore === -1) ?
-                    (score === 1) || (score === -1) ?
-                      `${name} has ${score} point for ${reason}.`
-                    :
-                      `${name} has ${score} points, ${reasonScore} of which is for ${reason}.`
-                  :
-                    `${name} has ${score} points, ${reasonScore} of which are for ${reason}.`
-                :
-                  score === 1 ?
-                    `${name} has ${score} point`
-                  :
-                    `${name} has ${score} points`;
+            `${name} has ${score} points, ${reasonScore} of which are for ${reason}.`
+          :
+          score === 1 ?
+            `${name} has ${score} point`
+            :
+            `${name} has ${score} points`;
 
 
-      msg.send(message);
+        msg.send(message);
 
-      return robot.emit("plus-one", {
-        name,
-        direction: operator,
-        room,
-        reason,
-        from
-      });
-    }
-});
+        return robot.emit("plus-one", {
+          name,
+          direction: operator,
+          room,
+          reason,
+          from
+        });
+      }
+    });
+  });
 
   robot.respond(new RegExp(`\
 (?:erase)\
@@ -124,7 +140,7 @@ $\
 \
 (?:\\s+(?:for|because|cause|cuz)\\s+(.+))?\
 $\
-`, 'i'), function(msg) {
+`, 'i'), function (msg) {
     let erased;
     let [__, name, reason] = Array.from(msg.match);
     const from = msg.message.user.name.toLowerCase();
@@ -154,62 +170,68 @@ $\
 
     if (erased != null) {
       const message = (reason != null) ?
-                  `Erased the following reason from ${name}: ${reason}`
-                :
-                  `Erased points for ${name}`;
+        `Erased the following reason from ${name}: ${reason}`
+        :
+        `Erased points for ${name}`;
       return msg.send(message);
     }
   });
 
   // Catch the message asking for the score.
-  robot.respond(new RegExp("(?:" + scoreKeyword + ") (for\s)?(.*)", "i"), function(msg) {
-    let name = msg.match[2].trim().toLowerCase();
+  robot.respond(new RegExp("(?:" + scoreKeyword + ") (for\s)?(.*)", "i"), function (msg) {
+    m.connectDb().then(async () => {
+      let name = msg.match[2].trim().toLowerCase();
 
-    if (name) {
-      if (name.charAt(0) === ':') {
-        name = (name.replace(/(^\s*@)|([,\s]*$)/g, ''));
+      if (name) {
+        if (name.charAt(0) === ':') {
+          name = (name.replace(/(^\s*@)|([,\s]*$)/g, ''));
+        } else {
+          name = (name.replace(/(^\s*@)|([,:\s]*$)/g, ''));
+        }
+      }
+
+      scoreKeeper.scoreForUser(name, (u) => {
+        const score = u.kudos;
+        const reasons = u.details.map(a => a.reason);
+
+        const reasonString = (typeof reasons === 'object') && (Object.keys(reasons).length > 0) ?
+          `${name} has ${score} points. Here are some ${reasonsKeyword}:` +
+          _.reduce(reasons, (memo, val, key) => memo += `\n${key}: ${val} points`
+            , "")
+          :
+          `${name} has ${score} points.`;
+
+        return msg.send(reasonString);
+      });
+    });
+  });
+
+  robot.respond(/(top|bottom) (\d+)/i, function (msg) {
+    m.connectDb().then(async () => {
+      const amount = parseInt(msg.match[2]) || 10;
+      const message = [];
+
+      const tops = scoreKeeper[msg.match[1]](amount);
+
+      if (tops.length > 0) {
+        for (let i = 0, end = tops.length - 1, asc = 0 <= end; asc ? i <= end : i >= end; asc ? i++ : i--) {
+          message.push(`${i + 1}. ${tops[i].name} : ${tops[i].score}`);
+        }
       } else {
-        name = (name.replace(/(^\s*@)|([,:\s]*$)/g, ''));
+        message.push("No scores to keep track of yet!");
       }
-    }
 
-    const score = scoreKeeper.scoreForUser(name);
-    const reasons = scoreKeeper.reasonsForUser(name);
+      if (msg.match[1] === "top") {
+        const graphSize = Math.min(tops.length, Math.min(amount, 20));
+        message.splice(0, 0, clark(_.first(_.pluck(tops, "score"), graphSize)));
+      }
 
-    const reasonString = (typeof reasons === 'object') && (Object.keys(reasons).length > 0) ?
-                     `${name} has ${score} points. Here are some ${reasonsKeyword}:` +
-                     _.reduce(reasons, (memo, val, key) => memo += `\n${key}: ${val} points`
-                     , "")
-                   :
-                     `${name} has ${score} points.`;
-
-    return msg.send(reasonString);
+      return msg.send(message.join("\n"));
+    });
   });
 
-  robot.respond(/(top|bottom) (\d+)/i, function(msg) {
-    const amount = parseInt(msg.match[2]) || 10;
-    const message = [];
-
-    const tops = scoreKeeper[msg.match[1]](amount);
-
-    if (tops.length > 0) {
-      for (let i = 0, end = tops.length-1, asc = 0 <= end; asc ? i <= end : i >= end; asc ? i++ : i--) {
-        message.push(`${i+1}. ${tops[i].name} : ${tops[i].score}`);
-      }
-    } else {
-      message.push("No scores to keep track of yet!");
-    }
-
-    if(msg.match[1] === "top") {
-      const graphSize = Math.min(tops.length, Math.min(amount, 20));
-      message.splice(0, 0, clark(_.first(_.pluck(tops, "score"), graphSize)));
-    }
-
-    return msg.send(message.join("\n"));
-  });
-
-  robot.router.get(`/${robot.name}/normalize-points`, function(req, res) {
-    scoreKeeper.normalize(function(score) {
+  robot.router.get(`/${robot.name}/normalize-points`, function (req, res) {
+    scoreKeeper.normalize(function (score) {
       if (score > 0) {
         score = score - Math.ceil(score / 10);
       } else if (score < 0) {
@@ -222,7 +244,7 @@ $\
     return res.end(JSON.stringify('done'));
   });
 
-  return robot.router.get(`/${robot.name}/scores`, function(req, res) {
+  return robot.router.get(`/${robot.name}/scores`, function (req, res) {
     const query = querystring.parse(req._parsedUrl.query);
 
     if (query.name) {

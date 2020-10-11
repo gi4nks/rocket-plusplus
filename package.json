@@ -23,6 +23,7 @@
     "local": "node -r dotenv/config node_modules/hubot/bin/hubot.js -a rocketchat"
   },
   "dependencies": {
+    "@babel/cli": "^7.4.4",
     "clark": "0.0.6",
     "hubot": "3",
     "hubot-rocketchat": "github:rocketchat/hubot-rocketchat",
