@@ -211,53 +211,59 @@ $\
       const amount = parseInt(msg.match[2]) || 10;
       const message = [];
 
-      const tops = scoreKeeper[msg.match[1]](amount);
+      const tops = scoreKeeper[msg.match[1]](amount, (tops) => {
 
-      if (tops.length > 0) {
-        for (let i = 0, end = tops.length - 1, asc = 0 <= end; asc ? i <= end : i >= end; asc ? i++ : i--) {
-          message.push(`${i + 1}. ${tops[i].name} : ${tops[i].score}`);
+        if (tops.length > 0) {
+          for (let i = 0, end = tops.length - 1, asc = 0 <= end; asc ? i <= end : i >= end; asc ? i++ : i--) {
+            message.push(`${i + 1}. ${tops[i].name} : ${tops[i].score}`);
+          }
+        } else {
+          message.push("No scores to keep track of yet!");
         }
-      } else {
-        message.push("No scores to keep track of yet!");
-      }
 
-      if (msg.match[1] === "top") {
-        const graphSize = Math.min(tops.length, Math.min(amount, 20));
-        message.splice(0, 0, clark(_.first(_.pluck(tops, "score"), graphSize)));
-      }
+        if (msg.match[1] === "top") {
+          const graphSize = Math.min(tops.length, Math.min(amount, 20));
+          message.splice(0, 0, clark(_.first(_.pluck(tops, "score"), graphSize)));
+        }
 
-      return msg.send(message.join("\n"));
+        return msg.send(message.join("\n"));
+      });
+
     });
   });
 
   robot.router.get(`/${robot.name}/normalize-points`, function (req, res) {
-    scoreKeeper.normalize(function (score) {
-      if (score > 0) {
-        score = score - Math.ceil(score / 10);
-      } else if (score < 0) {
-        score = score - Math.floor(score / 10);
-      }
+    m.connectDb().then(async () => {
+      scoreKeeper.normalize(function (score) {
+        if (score > 0) {
+          score = score - Math.ceil(score / 10);
+        } else if (score < 0) {
+          score = score - Math.floor(score / 10);
+        }
 
-      return score;
+        return score;
+      });
+
+      return res.end(JSON.stringify('done'));
     });
-
-    return res.end(JSON.stringify('done'));
   });
 
   return robot.router.get(`/${robot.name}/scores`, function (req, res) {
-    const query = querystring.parse(req._parsedUrl.query);
+    m.connectDb().then(async () => {
+      const query = querystring.parse(req._parsedUrl.query);
 
-    if (query.name) {
-      const obj = {};
-      obj[query.name] = scoreKeeper.scoreForUser(query.name);
-      return res.end(JSON.stringify(obj));
-    } else {
-      const direction = query.direction || "top";
-      const amount = query.limit || 10;
+      if (query.name) {
+        const obj = {};
+        obj[query.name] = scoreKeeper.scoreForUser(query.name);
+        return res.end(JSON.stringify(obj));
+      } else {
+        const direction = query.direction || "top";
+        const amount = query.limit || 10;
 
-      const tops = scoreKeeper[direction](amount);
+        const tops = scoreKeeper[direction](amount);
 
-      return res.end(JSON.stringify(tops, null, 2));
-    }
+        return res.end(JSON.stringify(tops, null, 2));
+      }
+    });
   });
 };
