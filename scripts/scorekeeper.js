@@ -123,19 +123,21 @@ var ScoreKeeper = (function () {
 
             // time to save the last value in the room
             // first check if it exist (create or update last)
-            m.models.RoomModel.findOne({"name": userDetailsModel.room}).exec( 
-                function(err, result) {
+            m.models.RoomModel.findOne({ "name": userDetailsModel.room }).exec(
+                function (err, result) {
                     if (err) {
                         robot.logger.warn("Error on getting last: " + err);
                     }
                     else {
                         robot.logger.debug("Last found: " + result);
-                        
+
                         if (!result) {
                             // create a new one
-                            const last = new m.models.RoomModel({"name": userDetailsModel.room, 
-                                            "lastUser": userModel.username, 
-                                            "lastReason": userDetailsModel.reason});
+                            const last = new m.models.RoomModel({
+                                "name": userDetailsModel.room,
+                                "lastUser": userModel.username,
+                                "lastReason": userDetailsModel.reason
+                            });
 
                             last.save(function (err, result) {
                                 if (err) {
@@ -164,11 +166,11 @@ var ScoreKeeper = (function () {
                             }
                         });
                     }
-             });
+                });
         })
     }
 
-    ScoreKeeper.prototype.add = function (to, from, rm, rsn) {
+    ScoreKeeper.prototype.add = function (to, from, rm, rsn, callback) {
         robot.logger.info("writing a score to user: " + to + " - " + from + " - " + rm);
 
         if (this.validate(to, from)) {
@@ -182,15 +184,15 @@ var ScoreKeeper = (function () {
 
 
                 this.saveUser(u, detailsModel, (k, r) => {
-                    return [k, r];
+                    callback(k, r);
                 });
             });
         } else {
-            return [null, null];
+            callback(null, null);
         }
     }
 
-    ScoreKeeper.prototype.subtract = function (to, from, rm, rsn) {
+    ScoreKeeper.prototype.subtract = function (to, from, rm, rsn, callback) {
         robot.logger.info("writing a score to user: " + to + " - " + from + " - " + rm);
 
         if (this.validate(to, from)) {
@@ -204,11 +206,11 @@ var ScoreKeeper = (function () {
 
 
                 this.saveUser(u, detailsModel, (k, r) => {
-                    return [k, r];
+                    callback(k, r);
                 });
             });
         } else {
-            return [null, null];
+            callback(null, null);
         }
     }
 
@@ -221,10 +223,10 @@ var ScoreKeeper = (function () {
             if (reason) {
                 this.getUser(user, (u) => {
                     robot.logger.info("user found :" + u.username + " - " + u.kudos + " - " + u.details);
-    
+
                     for (let index = 0; index < u.details.length; index++) {
                         const element = u.details[index];
-                        
+
                         if (element.reason === reason) {
                             u.details.splice(index, 1);
 
@@ -234,23 +236,22 @@ var ScoreKeeper = (function () {
                                 }
                                 else {
                                     robot.logger.info("User saved: " + result);
-                                    return true;
+                                    callback();
                                 }
                             });
                         }
                     }
 
-                    return true;
+                    callback();
                 });
             } else {
                 m.models.UserModel.deleteOne({ 'username': user }).exec(function (err, u) {
                     if (err) {
                         robot.logger.info("erase user: " + user + " error: " + err);
-                        return false;
                     }
                     else {
                         robot.logger.info("erase user: " + user + " found: " + u);
-                        return true;
+                        callback();
                     }
                 });
             }
@@ -259,124 +260,99 @@ var ScoreKeeper = (function () {
 
     ScoreKeeper.prototype.top = function (amount, callback) {
         const tops = [];
-    
-        m.models.UserModel.find({}).sort({ kudos: -1 }).limit(amount).exec( 
-            function(err, result) {
+
+        m.models.UserModel.find({}).sort({ kudos: -1 }).limit(amount).exec(
+            function (err, result) {
                 if (err) {
                     robot.logger.warn("Error on getting top users: " + err);
                 }
                 else {
                     robot.logger.debug("Top found: " + result);
-                    
-                    const mappedResults = result.map(function(res) {
-                            var info = { "name": res.username,
-                                         "score": res.kudos
-                                        }
-                            return info;
-                       });
-                       
+
+                    const mappedResults = result.map(function (res) {
+                        var info = {
+                            "name": res.username,
+                            "score": res.kudos
+                        }
+                        return info;
+                    });
+
                     robot.logger.debug("Top mappedResults: " + mappedResults);
 
                     callback(mappedResults);
                 }
-         });
+            });
     }
 
     ScoreKeeper.prototype.bottom = function (amount, callback) {
         const tops = [];
-    
-        m.models.UserModel.find({}).sort({ kudos: 1 }).limit(amount).exec( 
-            function(err, result) {
+
+        m.models.UserModel.find({}).sort({ kudos: 1 }).limit(amount).exec(
+            function (err, result) {
                 if (err) {
                     robot.logger.warn("Error on getting bottom users: " + err);
                 }
                 else {
                     robot.logger.debug("Bottom found: " + result);
-                    
-                    const mappedResults = result.map(function(res) {
-                            var info = { "name": res.username,
-                                         "score": res.kudos
-                                        }
-                            return info;
-                       });
-                       
+
+                    const mappedResults = result.map(function (res) {
+                        var info = {
+                            "name": res.username,
+                            "score": res.kudos
+                        }
+                        return info;
+                    });
+
                     robot.logger.debug("Bottom mappedResults: " + mappedResults);
 
                     callback(mappedResults);
                 }
-         });
+            });
     }
 
-    this.last = (room, callback) => {
-
-        m.models.RoomModel.findOne({"name": room}.exec( 
-            function(err, result) {
+    ScoreKeeper.prototype.last = function (room, callback) {
+        m.models.RoomModel.findOne({ "name": room }.exec(
+            function (err, result) {
                 if (err) {
                     robot.logger.warn("Error on getting last: " + err);
                 }
                 else {
                     robot.logger.debug("Last found: " + result);
-                    
+
                     if (!result) {
-                        callback([null, null]);
+                        callback(null, null);
                     }
 
-                    callback([result.lastUser, result.lastReason]);
+                    callback(result.lastUser, result.lastReason);
                 }
-         }));
-      }
+            }));
+    }
     
-    /*
-    this.erase = (user, from, room, reason) => {
-      user = this.getUser(user);
-  
-      if (reason) {
-        delete this.storage.reasons[user][reason];
-        this.saveUser(user, from.name, room);
-        return true;
-      } else {
-        delete this.storage.scores[user];
-        delete this.storage.reasons[user];
-        return true;
-      }
-  
-      return false;
+    ScoreKeeper.prototype.normalize = function (fn) {
+        m.models.UserModel.find({}).exec(
+            function (err, result) {
+                if (err) {
+                    robot.logger.warn("Error on normalize: " + err);
+                }
+                else {
+                    for (let index = 0; index < result.length; index++) {
+                        const r = result[index];
+
+                        r.kudos = fn(r.kudos);
+
+                        r.save(function (err, result) {
+                            if (err) {
+                                robot.logger.info("Error on saving the user: " + err);
+                            }
+                            else {
+                                robot.logger.info("User saved: " + result);
+                            }
+                        });
+                    }
+                }
+            });
     }
-  
-    this.saveScoreLog = (user, from, room, reason) => {
-      if (typeof this.storage.log[from] !== "object") {
-        this.storage.log[from] = {};
-      }
-  
-      this.storage.log[from][user] = new Date();
-      return this.storage.last[room] = {user, reason};
-    }
-  
-    this.last = (room) => {
-      const last = this.storage.last[room];
-      if (typeof last === 'string') {
-        return [last, ''];
-      } else {
-        return [last.user, last.reason];
-      }
-    }
-  
-    this.length = () =>  {
-      return this.storage.log.length;
-    }
-  
-    this.normalize = (fn) => {
-      const scores = {};
-  
-      _.each(this.storage.scores, function(score, name) {
-        scores[name] = fn(score);
-        if (scores[name] === 0) { return delete scores[name]; }
-      });
-  
-      this.storage.scores = scores;
-      return robot.brain.save();
-    }
-    */
+    
     return ScoreKeeper;
 
 })();
