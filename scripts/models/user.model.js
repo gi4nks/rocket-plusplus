@@ -28,10 +28,12 @@ const UserSchema = new mongoose.Schema({
 
 const UserModel = mongoose.model('UserModel', UserSchema);
 
-module.exports = { UserModel, UserDetailsModel, UserLogModel }
+const RoomSchema = new mongoose.Schema({
+    name: String,
+    lastUser: String,
+    lastReason: String
+});
 
-/*
-exports.UserModel = UserModel;
-exports.UserDetailsModel = UserDetailsModel;
-exports.UserLogModel = UserLogModel;
-*/
+const RoomModel = mongoose.model('RoomModel', RoomSchema);
+
+module.exports = { UserModel, UserDetailsModel, UserLogModel, RoomModel }

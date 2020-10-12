@@ -45,23 +45,6 @@ module.exports = function (robot) {
   const reasonsKeyword = process.env.HUBOT_PLUSPLUS_REASONS || 'raisins';
   const reasonConjunctions = process.env.HUBOT_PLUSPLUS_CONJUNCTIONS || 'for|because|cause|cuz|as';
 
-  // sweet regex bro
-  /*
-  robot.hear(new RegExp(`\
-\
-^\
-\
-([\\s\\w'@.\\-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\
-\
-\\s*\
-\
-(\\+\\+|--|—)\
-\
-(?:\\s+(?:${reasonConjunctions})\\s+(.+))?\
-$\
-`, 'i'), function(msg) {
-*/
-
   robot.hear(RegExp("^([\\s\\w'@.\\-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\\s*(\\+\\+|--|—)(?:\\s+(?:" + reasonConjunctions + ")\\s+(.+))?$", "i"), function (msg) {
     m.connectDb().then(async () => {
 
@@ -133,48 +116,46 @@ $\
     });
   });
 
-  robot.respond(new RegExp(`\
-(?:erase)\
-\
-([\\s\\w'@.-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\
-\
-(?:\\s+(?:for|because|cause|cuz)\\s+(.+))?\
-$\
-`, 'i'), function (msg) {
-    let erased;
-    let [__, name, reason] = Array.from(msg.match);
-    const from = msg.message.user.name.toLowerCase();
-    const {
-      user
-    } = msg.envelope;
-    const {
-      room
-    } = msg.message;
-    reason = reason != null ? reason.trim().toLowerCase() : undefined;
+  robot.respond(RegExp("(?:erase)([\\s\\w'@.-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)(?:\\s+(?:" + reasonConjunctions + ")\\s+(.+))?$", "i"), function (msg) {
+    m.connectDb().then(async () => {
 
-    if (name) {
-      if (name.charAt(0) === ':') {
-        name = (name.replace(/(^\s*@)|([,\s]*$)/g, '')).trim().toLowerCase();
-      } else {
-        name = (name.replace(/(^\s*@)|([,:\s]*$)/g, '')).trim().toLowerCase();
+      robot.logger.info("erase called");
+
+      let erased;
+      let [__, name, reason] = Array.from(msg.match);
+      const from = msg.message.user.name.toLowerCase();
+      const {
+        user
+      } = msg.envelope;
+      const {
+        room
+      } = msg.message;
+      reason = reason != null ? reason.trim().toLowerCase() : undefined;
+
+      if (name) {
+        if (name.charAt(0) === ':') {
+          name = (name.replace(/(^\s*@)|([,\s]*$)/g, '')).trim().toLowerCase();
+        } else {
+          name = (name.replace(/(^\s*@)|([,:\s]*$)/g, '')).trim().toLowerCase();
+        }
       }
-    }
 
-    const isAdmin = (this.robot.auth != null ? this.robot.auth.hasRole(user, 'plusplus-admin') : undefined) || (this.robot.auth != null ? this.robot.auth.hasRole(user, 'admin') : undefined);
+      const isAdmin = (this.robot.auth != null ? this.robot.auth.hasRole(user, 'plusplus-admin') : undefined) || (this.robot.auth != null ? this.robot.auth.hasRole(user, 'admin') : undefined);
 
-    if ((this.robot.auth == null) || isAdmin) {
-      erased = scoreKeeper.erase(name, from, room, reason);
-    } else {
-      return msg.reply("Sorry, you don't have authorization to do that.");
-    }
+      if ((this.robot.auth == null) || isAdmin) {
+        erased = scoreKeeper.erase(name, from, room, reason);
+      } else {
+        return msg.reply("Sorry, you don't have authorization to do that.");
+      }
 
-    if (erased != null) {
-      const message = (reason != null) ?
-        `Erased the following reason from ${name}: ${reason}`
-        :
-        `Erased points for ${name}`;
-      return msg.send(message);
-    }
+      if (erased != null) {
+        const message = (reason != null) ?
+          `Erased the following reason from ${name}: ${reason}`
+          :
+          `Erased points for ${name}`;
+        return msg.send(message);
+      }
+    });
   });
 
   // Catch the message asking for the score.
