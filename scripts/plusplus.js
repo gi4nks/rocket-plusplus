@@ -73,46 +73,57 @@ module.exports = function (robot) {
         }
       }
 
+      var callbackResult = function (score, reasonScore) {
+        // if we got a score, then display all the things and fire off events!
+        if (score != null) {
+          const message = (reason != null) ?
+            (reasonScore === 1) || (reasonScore === -1) ?
+              (score === 1) || (score === -1) ?
+                `${name} has ${score} point for ${reason}.`
+                :
+                `${name} has ${score} points, ${reasonScore} of which is for ${reason}.`
+              :
+              `${name} has ${score} points, ${reasonScore} of which are for ${reason}.`
+            :
+            score === 1 ?
+              `${name} has ${score} point`
+              :
+              `${name} has ${score} points`;
+
+
+          msg.send(message);
+
+          return robot.emit("plus-one", {
+            name,
+            direction: operator,
+            room,
+            reason,
+            from
+          });
+        }
+      };
+
+      var callback = function () {
+        // do the {up, down}vote, and figure out what the new score is
+        Array.from(operator === "++" ?
+          scoreKeeper.add(name, from, room, reason, (score, reasonScore) => callbackResult(score, reasonScore))
+          :
+          scoreKeeper.subtract(name, from, room, reason, (score, reasonScore) => callbackResult(score, reasonScore)));
+      }
+
       // check whether a name was specified. use MRU if not
       if ((name == null) || (name === '')) {
         let lastReason;
-        [name, lastReason] = Array.from(scoreKeeper.last(room));
-        if ((reason == null) && (lastReason != null)) { reason = lastReason; }
-      }
+        scoreKeeper.last(room, (n, r) => {
+          if ((reason == null) && (r != null)) { reason = r; }
+          if ((name == null) && (n != null)) { name = n; }
 
-      // do the {up, down}vote, and figure out what the new score is
-      const [score, reasonScore] = Array.from(operator === "++" ?
-        scoreKeeper.add(name, from, room, reason)
-        :
-        scoreKeeper.subtract(name, from, room, reason));
+          callback();
 
-      // if we got a score, then display all the things and fire off events!
-      if (score != null) {
-        const message = (reason != null) ?
-          (reasonScore === 1) || (reasonScore === -1) ?
-            (score === 1) || (score === -1) ?
-              `${name} has ${score} point for ${reason}.`
-              :
-              `${name} has ${score} points, ${reasonScore} of which is for ${reason}.`
-            :
-            `${name} has ${score} points, ${reasonScore} of which are for ${reason}.`
-          :
-          score === 1 ?
-            `${name} has ${score} point`
-            :
-            `${name} has ${score} points`;
-
-
-        msg.send(message);
-
-        return robot.emit("plus-one", {
-          name,
-          direction: operator,
-          room,
-          reason,
-          from
         });
       }
+
+      callback();
     });
   });
 
@@ -143,17 +154,15 @@ module.exports = function (robot) {
       const isAdmin = (this.robot.auth != null ? this.robot.auth.hasRole(user, 'plusplus-admin') : undefined) || (this.robot.auth != null ? this.robot.auth.hasRole(user, 'admin') : undefined);
 
       if ((this.robot.auth == null) || isAdmin) {
-        erased = scoreKeeper.erase(name, from, room, reason);
+        scoreKeeper.erase(name, from, room, reason, () => {
+          const message = (reason != null) ?
+            `Erased the following reason from ${name}: ${reason}`
+            :
+            `Erased points for ${name}`;
+          return msg.send(message);
+        });
       } else {
         return msg.reply("Sorry, you don't have authorization to do that.");
-      }
-
-      if (erased != null) {
-        const message = (reason != null) ?
-          `Erased the following reason from ${name}: ${reason}`
-          :
-          `Erased points for ${name}`;
-        return msg.send(message);
       }
     });
   });
@@ -234,16 +243,16 @@ module.exports = function (robot) {
       const query = querystring.parse(req._parsedUrl.query);
 
       if (query.name) {
-        const obj = {};
-        obj[query.name] = scoreKeeper.scoreForUser(query.name);
-        return res.end(JSON.stringify(obj));
+        scoreKeeper.scoreForUser(query.name, (obj) => {
+          return res.end(JSON.stringify(obj));
+        });
       } else {
         const direction = query.direction || "top";
         const amount = query.limit || 10;
 
-        const tops = scoreKeeper[direction](amount);
-
-        return res.end(JSON.stringify(tops, null, 2));
+        scoreKeeper[direction](amount, (tops) => {
+          return res.end(JSON.stringify(tops, null, 2));
+        });
       }
     });
   });
