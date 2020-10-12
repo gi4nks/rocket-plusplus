@@ -27,6 +27,8 @@ source .env
 bin/hubot
 ```
 
+It requires a valid mongodb instance.
+
 On the server, login as a regular user (not the BOT user), go to GENERAL, and try:
 
 ```
