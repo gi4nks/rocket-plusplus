@@ -121,7 +121,50 @@ var ScoreKeeper = (function () {
                 robot.logger.info("Userlog saved: " + result)
             }
 
-            callback();
+            // time to save the last value in the room
+            // first check if it exist (create or update last)
+            m.models.RoomModel.findOne({"name": userDetailsModel.room}).exec( 
+                function(err, result) {
+                    if (err) {
+                        robot.logger.warn("Error on getting last: " + err);
+                    }
+                    else {
+                        robot.logger.debug("Last found: " + result);
+                        
+                        if (!result) {
+                            // create a new one
+                            const last = new m.models.RoomModel({"name": userDetailsModel.room, 
+                                            "lastUser": userModel.username, 
+                                            "lastReason": userDetailsModel.reason});
+
+                            last.save(function (err, result) {
+                                if (err) {
+                                    robot.logger.warn("Error on saving the last: " + err);
+                                }
+                                else {
+                                    robot.logger.info("last saved: " + result);
+
+                                    callback();
+                                }
+                            });
+                        }
+
+                        // change the value then
+                        result.lastUser = userModel.username;
+                        result.lastReason = userDetailsModel.reason;
+
+                        result.save(function (err, result) {
+                            if (err) {
+                                robot.logger.warn("Error on saving the last: " + err);
+                            }
+                            else {
+                                robot.logger.info("last result saved: " + result);
+
+                                callback();
+                            }
+                        });
+                    }
+             });
         })
     }
 
@@ -173,7 +216,7 @@ var ScoreKeeper = (function () {
         this.getUser(user, callback);
     }
 
-    ScoreKeeper.prototype.erase = function (user, from, room, reason) {
+    ScoreKeeper.prototype.erase = function (user, from, room, reason, callback) {
         this.getUser(user, (u) => {
             if (reason) {
                 this.getUser(user, (u) => {
@@ -263,6 +306,25 @@ var ScoreKeeper = (function () {
                 }
          });
     }
+
+    this.last = (room, callback) => {
+
+        m.models.RoomModel.findOne({"name": room}.exec( 
+            function(err, result) {
+                if (err) {
+                    robot.logger.warn("Error on getting last: " + err);
+                }
+                else {
+                    robot.logger.debug("Last found: " + result);
+                    
+                    if (!result) {
+                        callback([null, null]);
+                    }
+
+                    callback([result.lastUser, result.lastReason]);
+                }
+         }));
+      }
     
     /*
     this.erase = (user, from, room, reason) => {
